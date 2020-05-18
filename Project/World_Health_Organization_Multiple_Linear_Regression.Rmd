@@ -1,0 +1,279 @@
+---
+title: "World Health Organization Life Expectancy"
+author: "Mark Vazquez"
+date: "April 22, 2020"
+output:
+  pdf_document: default
+  html_document: default
+header-includes: \usepackage{xcolor}
+---
+
+# Introduction: 
+In the past, there have been many studies that show the factors that affect an individual’s life expectancy. In these studies researchers have considered demographic variables, income composition and mortality rates. While conducting these studies researcher found that the effect of immunization and human development was not taken into account. Using one year’s worth of data for all countries, some research was done considering multiple linear regression. The data from the Global Health Organization (GHO) under World Health Organization (WHO) contains data from all countries health status.
+
+# Purpose 
+Taking into account both of the affects that where described above we have found enough reason to formulate a regression model by using WHO data. We will focus on mixed effects model and multiple linear regression. We will also use data from the time period of 2000 to 2015 for all countries to model our regression. These models help countries determine where to invest more resources if they seek to improve overall Life Expectancy. 
+
+
+## Multiple Linear Regression Overview  
+
+\begin{itemize}
+\color{blue}
+\item y = Life Expectancy in age
+\item x1 = Adult Mortality
+\item x2 = Alcohol, recorded per capita (15+) consumption (in litres of pure alcohol)
+\item x3 = Measles - number of reported cases per 1000 population
+\item x4 = Number of under-five deaths per 1000 population
+\item x5 = Polio (Pol3) immunization coverage among 1-year-olds (%)
+\item x6 = General Government Expenditure on health as a percentage of total government expenditure (%)
+\item x7 = Diphtheria tetanus toxoid and pertussis (DTP3) immunization coverage among 1-year-olds (%)
+\item x8 = HIV/AIDSDeaths per 1 000 live births HIV/AIDS (0-4 years)
+\item x9 = GDPGross Domestic Product per capita (in USD)
+\item x10 = Population of the country
+\item x11 = thinness 1-19 yearsPrevalence of thinness among children
+\item x12 = Number of years of Schooling
+\end{itemize}
+
+
+```{r, echo=FALSE, warning=FALSE}
+#Will rearrange this appropriately but for now 
+#install.packages('dplyr')
+suppressMessages(library(dplyr))
+#install.packages('ggfortify')
+suppressMessages(library(ggfortify))
+#install.packages('olsrr')
+suppressMessages(library(olsrr))
+#install.packages('MPV')
+suppressMessages(library(MPV))
+#install.packages('gridExtra')
+suppressMessages(library(gridExtra))
+#install.packages('cvTools')
+suppressMessages(library(cvTools))
+#install.packages('car')
+suppressMessages(library(car))
+```
+
+
+
+## Data 
+```{r, echo=FALSE}
+who_dat <- read.csv("C:\\Users\\vazqu\\OneDrive - University of Houston Downtown\\Stat 4310\\Final\\life-expectancy-who-revised\\who-revised.csv", header =  T)
+
+```
+
+
+```{r, out.width="50%", echo = FALSE, warning=FALSE}
+#### DATA CLEANING 
+
+##Check NA values in Rows
+#who_dat[is.na(who_dat$GDP),] 
+#who_dat[is.na(who_dat$Total.expenditure),] 
+
+#removing unnecessary Index column, and repetivite columns
+who_dat <- within(who_dat, rm('X','thinness.5.9.years', 'Hepatitis.B', 'Income.composition.of.resources', 'infant.deaths')) 
+
+
+##Removing These countries due to large amounts of missing values , especially significant regressors 
+who_dat <- subset(who_dat, Country != "Democratic People's Republic of Korea")
+who_dat <- subset(who_dat, Country != "South Sudan")
+who_dat <- subset(who_dat, Country != "Somalia")
+
+
+#Renaming Columns to make our lives easier
+who_dat <- who_dat %>% 
+    rename('Lifexp'='Life.expectancy',
+          'Totexp'='Total.expenditure',
+          'Admort'='Adult.Mortality',
+          'U5deaths'='under.five.deaths',
+          'HIV'='HIV.AIDS',
+          'Thinness' = 'thinness..1.19.years')
+
+###Adding NA Values to School and U5 Deaths rows in place of 0s
+who_dat$Schooling[who_dat$Schooling == 0] <- NA
+who_dat$U5deaths[who_dat$U5deaths == 0] <- NA
+
+#removing missing NA values in our Dependent Variable
+who_dat <- who_dat[!is.na(who_dat$Lifexp),]
+
+#Correctly classifying our Variables
+who_dat$Country <- as.factor(who_dat$Country)
+who_dat$Year <- as.factor(who_dat$Year)
+
+#Regression Model
+who.lm <- lm(who_dat$Lifexp~. -Country -Year, data = who_dat)
+
+#colnames(who_dat)
+#head(who_dat)
+```
+
+Let us take a look at randomly selected rows 
+
+```{r, results='asis', echo=FALSE, warning=FALSE}
+#install.packages('xtable')
+#install.packages('ggplot2')
+library(xtable)
+print(xtable(who_dat[sample(nrow(who_dat), 15),]), type = "latex", scalebox='0.50')
+```
+
+### Data Visualization with Years(2000-2015)
+```{r, out.height="50%", out.width="70%", echo=FALSE}
+who_dat %>%
+ggplot()+
+        geom_violin(aes(x=Year, y=Lifexp, group=Year, fill=Year))
+```
+
+
+### Fitting Model
+```{r}
+summary(who.lm)
+```
+Our p-value: 2.2e-16 is significant at $\alpha=.05$. Therefore, we conclude that the model is significant. Hence, there is a linear relationship between the response y and any of the other of the regressor variables. 
+
+
+According to our t-tests the p values .0654,.6893 are greater than our significance level of $\alpha=.05$. Therefore the regressors Polio, Totexp are not contributing significantly to the model.
+
+
+$$\hat{y} = 49.86 -.01453x_1 -.1573x_2-.00003772x_3 - .003214x_4 + .00935x_5 + .01765x_6 + .03830x_7 - .5524x_8 + 00009468x_9$$  $$+.000000007156x_{10} - .05691x_{11} + 1.518x_{12}$$
+\normalsize
+
+### Model Adequacy Checking 
+```{r, out.height="50%", echo=FALSE}
+autoplot(who.lm,size = .5, colour = 'blue')[1:2]
+```
+In our residuals vs $\hat{y}$ there is not obvious pattern. Therefore, we satisfy Linearity assumption.  However, our probability plot of the residuals may show issues with normaility. Thus, we proceed with the normality test. 
+```{r}
+ols_test_normality(who.lm)
+```
+According to the Shapiro-Wilk,Kolmogorov-Smirnov,Cramer-von Mises and Anderson-Darling normality tests, because of our small p value, we reject the null and conclude that our residuals are not normal. This maybe be due to influential observations 
+
+We procced to find some influential observations and potential outliers
+```{r}
+inflm.fit <- influence.measures(who.lm)
+inflm_obs <- which(apply(inflm.fit$is.inf, 1, any))
+length(inflm_obs)
+```
+There are 158 influential observations.
+
+```{r, echo=FALSE}
+who_dat_2 <- who_dat[c(-1501,-1499,-727),]
+who.lm2 <- lm(Lifexp~., data = who_dat_2)
+shapiro.test(who.lm2$residuals)
+```
+Removing influential observations with the largest residuals did not improve the adequacy of our model. Our normality assumptions were still not met. After some data exploratory analysis, these observations seem valid. 
+
+
+
+#### Examine correlation plot for any suspect of multicoliinearity
+
+```{r, warning=FALSE, out.height="70%"}
+who_dat <- na.omit(who_dat) #Omit Na Values 
+who_dat <- select_if(who_dat, is.numeric) #Select only numeric Columns
+row.names(who_dat) <- NULL #Resetting Index
+#install.packages('corrplot')
+library(corrplot)
+corrplot(cor(who_dat), method = "ellipse")
+```
+There is suspect of multicollinearity because of some correlations between the variables
+
+Thus we proceed to check Variance Inflation Factors
+```{r}
+vif(who.lm)
+```
+Our Variance Inflation Factors are all less than 5. We can conclude there is no multicollinearity issues. 
+
+
+### Variable Selection and Model Building
+\small
+```{r, out.height="30%"}
+ols_step_best_subset(lm(Lifexp~., data=who_dat))
+plot(ols_step_best_subset(lm(Lifexp~., data=who_dat)))
+
+```
+\normalsize
+
+We will select the top 5 models and compare them 
+$$Model\space1:\hat{y} = 49.86 + 1.518x_{12}$$
+$$Model\space2: \hat{y} = 49.86 + 1.518x_{12} + .5524x_8$$
+$$Model\space3:\hat{y} = 49.86 + 1.518x_{12} + .5524x_8 + .01453x_1$$
+$$Model\space4:\hat{y} = 49.86 + 1.518x_{12} + .5524x_8 + .01453x_1 + .03830x_7$$
+$$Model\space5: \hat{y} = 49.86 + 1.518x_{12} + .5524x_8 + .01453x_1 + .03830x_7 + 00009468x_9$$
+```{r, echo=FALSE}
+fit1 <- lm(Lifexp~ Schooling, data = who_dat)
+fit2 <- lm(Lifexp~ Schooling + HIV, data = who_dat)
+fit3 <- lm(Lifexp~ Schooling + HIV + Admort, data = who_dat)
+fit4 <- lm(Lifexp~ Schooling + HIV + Admort + Diphtheria, data = who_dat)
+fit5 <- lm(Lifexp~ Schooling + HIV + Admort + Diphtheria + GDP, data = who_dat)
+```
+
+
+#### PRESS Statistics for Models
+```{r,echo=FALSE}
+paste("Our PRESS statistic for the First model is:", PRESS(fit1))
+paste("Our PRESS statistic for the Second model is:", PRESS(fit2))
+paste("Our PRESS statistic for the Third model is:", PRESS(fit3))
+paste("Our PRESS statistic for the Fourth model is:", PRESS(fit4))
+paste("Our PRESS statistic for the Fifth model is:", PRESS(fit5))
+
+```
+
+#### Variance Inflation Factors for Models
+```{r, echo=FALSE}
+vif(fit2)
+vif(fit3)
+vif(fit4)
+vif(fit5)
+```
+None of our models have issues with Multicollinearity. We proceed to select two models to compare. Parsimonious models are simple models with great explanatory predictive power. They explain data with a minimum number of parameters, or predictor variables.
+Therefore we picked models:
+$$Model\space3:\hat{y} = 49.86 + 1.518x_{12} + .5524x_8 + .01453x_1$$
+$$Model\space4:\hat{y} = 49.86 + 1.518x_{12} + .5524x_8 + .01453x_1 + .03830x_7$$
+
+Due to their lower PRESS statistics compared to Models 1 and 2. They also have a high Pred $R^2$ values. .8045 and ,8157 respectively. 
+
+Model Adequacy of Model 3
+```{r, echo=FALSE, out.height="40%"}
+#autoplot(fit1, size = .5, colour = 'blue')[1:2]
+#autoplot(fit2, size = .5, colour = 'red')[1:2]
+autoplot(fit3, size = .5, colour = 'purple')[1:2]
+#autoplot(fit4, size = .5, colour = 'pink')[1:2]
+#autoplot(fit5, size = .5, colour = 'gray')[1:2]
+
+```
+
+Model Adequacy of Model 4 
+```{r,echo=FALSE, out.height="40%"}
+autoplot(fit4, size = .5, colour = 'pink')[1:2]
+
+```
+
+
+For both our models, in our residuals vs $\hat{y}$ there is not obvious patterns. Therefore, we satisfy Linearity assumption.
+
+
+### Cross Validation
+```{r, echo=FALSE, warning=FALSE}
+library("cvTools")
+folds <- cvFolds(nrow(who_dat), K = 5, R =25) #type = "random", "consecutive", "interleaved"
+
+#perform cross-validation for an LS regression model, estimates predictor errors
+cvfit1 <- cvLm(fit3, cost = rtmspe,folds = folds)
+cvfit2 <- cvLm(fit4, cost = rtmspe,folds = folds)
+
+#Combine cross-validation results for various models into one object 
+#and select the model with the best prediction performance.
+cvFits <- cvSelect(LS1 = cvfit1, LS2 =cvfit2)
+cvFits
+densityplot(cvFits)
+#bwplot(cvFits)
+```
+
+```{r}
+summary(fit4)
+```
+
+## Conclusion:
+We prefer $Model\space4:\hat{y} = 49.86 + 1.518x_{12} + .5524x_8 + .01453x_1 + .03830x_7$ because it performed better in cross validation testing and because the principle of parsimony. The porportion of variation of the dependent variable (Life Expectancy) explained by this model is $R_{adj}=.8169$. It is interesting to note that the variables $x_{12}=Schooling, x_{8}=HIV, x_{1}=AdultMort, x_7=Diptheria$ are significant variables in explaining Life Expectancy. Here, increasing Schooling by 1 unit(year) while holding all other variables constant, results an increase of 1.722 in Life Expectancy. We can also expect an imporvement in Life expectancy if we increase Diphtheria(immunization coverage) by one unit while holding other variables constant by 0.0493 years. Increasing HIV by 1 unit while holding all other constant results in a decrease of Life Expectancy(years) by -0.564. Similarly, a unit increase in Adult Mortalities while holding all other variables constant results in a decrease in Life Expectancy by -0.0164. These variables agree with our intuition. If countries provide education and immuzation, there is an overall increase in life expectancy. However, other variables like HIV and Adult mortalities negatively affect Life Expectancy. This is why HIV is a largely researched field and similarly overall adult health. 
+
+### References 
+Data : https://www.kaggle.com/fahmadi96/life-expectancy-who-revised
+Montgomery, D., Peck, E., & Vining, G. (2012). Introduction to Linear Regression Analysis, 5th Edition. John Wiley & Sons.
